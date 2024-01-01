@@ -231,18 +231,204 @@ class SwitchFivePin
       Serial.println("Drive Until Time " + String(this->_driveUntilTime));
     }
 };
+enum Direction
+{
+  FORWARD = 0,
+  REVERSE = 1,
+};
 
-SwitchFivePin switchOne = SwitchFivePin(7, 8, 3, 2, 4); // L298 IN1 straight pin,  L298 IN2 turn pin, button read, turn led pin, straight led pin
+class KatoPowerController
+{
+  public:
+    KatoPowerController(int pwmPin, int forwardPin, int reversePin)
+    {
+      this->_pwmPin = pwmPin;
+      this->_forwardPin = forwardPin;
+      this->_reversePin = reversePin;
+      this->_direction = Direction::FORWARD;
+
+      pinMode(forwardPin, OUTPUT);
+      pinMode(reversePin, OUTPUT);
+      
+      SetPower(0);
+      SetDirection();
+    }
+
+    SetPower(int power)
+    {
+      if (-255 <= power <= 255)
+      {
+        // valid power
+        if (power < 0 && this->_direction == Direction::FORWARD)
+        {
+          // Flip the direction
+          this->_direction = Direction::REVERSE;
+          SetDirection();
+        }
+        else if (power >= 0 && _direction == Direction::REVERSE)
+        {
+          // Flip the direction
+          this->_direction = Direction::FORWARD;
+          SetDirection();
+        }
+
+        // WRite the analog power
+        Serial.println("Writing analog power to " + String(abs(power)) + " and direction is " + String(this->_direction));
+        analogWrite(this->_pwmPin, abs(power));
+      
+      }
+    }
+
+  private:
+    int _pwmPin;
+    int _forwardPin;
+    int _reversePin;
+    Direction _direction;
+    SetDirection()
+    {
+      Serial.println("Driving direction pins");
+      digitalWrite(this->_forwardPin, _direction == Direction::FORWARD ? 1 : 0);
+      digitalWrite(this->_reversePin, _direction == Direction::REVERSE ? 1 : 0);
+    }
+};
+
+enum SpeedTestState
+{
+  STOP = 0,
+  FORWARD_SLOW = 160,
+  FORWARD_FAST = 230,
+  REVERSE_SLOW = -120,
+  REVERSE_FAST = -175,
+};
+
+class SpeedControlButton
+{
+  public:
+    SpeedControlButton(int buttonpin)
+    {
+      this->buttonPin = buttonpin;
+      this->buttonstate = ButtonState::BUTTON_OFF;
+      this->debounceTimeout = millis();
+      this->speedState = SpeedTestState::STOP;
+      this->lastMovingState = SpeedTestState::REVERSE_FAST; // THis is the last one, goes forward slow, revers slow, forward fast, reverse fast
+      pinMode(buttonpin, INPUT);
+    }
+
+    Monitor()
+    {
+      if (this->debounceTimeout < millis())
+      {
+        int buttonVal = digitalRead(this->buttonPin);
+        switch (this->buttonstate)
+        {
+          case ButtonState::BUTTON_OFF:
+          {
+            if (buttonVal == 1)
+            {
+              // Rising edge of a button press, go faster
+              this->UpdateSpeed();
+              this->debounceTimeout = millis() + 100;
+            }
+            break;
+          }
+          default:
+            break;
+        }
+
+        // Update to debounce
+        this->buttonstate = buttonVal;
+      }
+      else
+      {
+        // Ignore - we are debouncing
+        Serial.println("Debouncing");
+      }
+    }
+
+    UpdateSpeed()
+    {
+      /* The train will NOT move by default. When a button is pressed, it will go forward slow. Then when a button is pressed, it will stop before doign anything else.
+        Between each state, the train will be stopped. The speed is controlled by the values in SpeedTestState. The controls work as expected with a switch.
+      */
+      switch (speedState)
+      {
+        case SpeedTestState::STOP:
+        {
+          // Go forward
+          switch(this->lastMovingState)
+          {
+            case SpeedTestState::FORWARD_FAST:
+            {
+              speedState = SpeedTestState::REVERSE_FAST;
+              break;
+            }
+            case SpeedTestState::FORWARD_SLOW:
+            {
+              speedState = SpeedTestState::REVERSE_SLOW;
+              break;
+            }
+            case SpeedTestState::REVERSE_FAST:
+            {
+              speedState = SpeedTestState::FORWARD_SLOW;
+              break;
+            }
+            case SpeedTestState::REVERSE_SLOW:
+            {
+              speedState = SpeedTestState::FORWARD_FAST;
+              break;
+            }
+            default:
+            {
+              speedState = SpeedTestState::FORWARD_SLOW;
+              break;
+            }
+          }
+          // Update last moving state so when we stop (next button press), we know what to do next.
+          this->lastMovingState = speedState;
+          break;
+        }
+        case SpeedTestState::FORWARD_SLOW:
+        case SpeedTestState::REVERSE_SLOW:
+        case SpeedTestState::FORWARD_FAST:
+        case SpeedTestState::REVERSE_FAST:
+        default:
+        {
+          // If we are doing anything but stopped, go to a stopped positionxs
+          speedState = SpeedTestState::STOP;
+          break;
+        }
+      }
+      pwController.SetPower((int) speedState);
+    }
+  private:
+    int buttonPin;
+    int pwmPin;
+    ButtonState buttonstate;
+    SpeedTestState speedState;
+    SpeedTestState lastMovingState;
+    unsigned long debounceTimeout;
+};
+
+
+/******* GLOBAL VARIABLE *********/
+
+//SwitchFivePin switchOne = SwitchFivePin(7, 8, 3, 2, 4); // L298 IN1 straight pin,  L298 IN2 turn pin, button read, turn led pin, straight led pin
+SwitchFourPin switchOne = SwitchFourPin(7, 8, 3, 2);
+KatoPowerController pwController = KatoPowerController(6, 10,11); // PWM pin (L298 EN), Forward (L298 IN1), Reverse (L298 IN2) (Valid PWM pins are 3, 5, 6, 9, 10, 11 @490Hz, 5 and 6 can go to 980Hz)
+SpeedControlButton btnController = SpeedControlButton(5);
 
 void setup() {
   // Setup each switch
   Serial.begin(9600);
   Serial.println("Initialized");
+  // Initialize the Power Controller - set power to 0. This variable is global and is used by the Button Controller class
+  pwController.SetPower((int) SpeedTestState::STOP);
 }
 
 void loop() 
 {
   // Read all the switches
   switchOne.Monitor();
+  btnController.Monitor();
   delay(1);
 }
