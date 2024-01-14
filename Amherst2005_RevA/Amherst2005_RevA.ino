@@ -1,10 +1,8 @@
 #include <Adafruit_MCP23X17.h>
 
 //#define DEBUG 
-//#define TEST_TURN_BLINK
+#define TEST_TURN_BLINK
 #define TURN_BLINK_HZ 5
-
-#define TOTAL_PINS 30
 
 void DPRINTLN(const String &s)
 {
@@ -15,9 +13,7 @@ void DPRINTLN(const String &s)
 
 enum Pin
 {
-  UNO_0 = 0,
-  UNO_1,
-  UNO_2,
+  UNO_2 = 2,
   UNO_3,
   UNO_4,
   UNO_5,
@@ -29,6 +25,8 @@ enum Pin
   UNO_11,
   UNO_12,
   UNO_13,
+  UNO_14,
+  UNO_15,
   MCP23017_0,
   MCP23017_1,
   MCP23017_2,
@@ -46,6 +44,9 @@ enum Pin
   MCP23017_14,
   MCP23017_15,
 };
+
+#define MIN_PIN (int) Pin::UNO_2
+#define MAX_PIN (int) Pin::MCP23017_15
 
 enum SwitchState
 {
@@ -68,7 +69,7 @@ Adafruit_MCP23X17 mcp;
 bool SetPinDirection(int pinNumber, int direction)
 {
   bool ret = false;
-  if (pinNumber >= 0 && pinNumber < TOTAL_PINS)
+  if (pinNumber >= MIN_PIN && pinNumber <= MAX_PIN)
   {
     if (pinNumber >= (int) Pin::MCP23017_0)
     {
@@ -88,7 +89,7 @@ bool SetPinDirection(int pinNumber, int direction)
 int PinRead(int pinNumber)
 {
   int ret = 0;  // default 0, this is not valid if there is a pull-up so that is the constraint on this class/implementation
-  if (pinNumber >= 0 && pinNumber < TOTAL_PINS)
+  if (pinNumber >= MIN_PIN && pinNumber <= MAX_PIN)
   {
     if (pinNumber >= (int) Pin::MCP23017_0)
     {
@@ -109,7 +110,7 @@ bool PinWrite(int pinNumber, int value)
 {
   bool ret = false;
   // Must be valid pin
-  if (pinNumber >= 0 && pinNumber < TOTAL_PINS)
+  if (pinNumber >= MIN_PIN && pinNumber <= MAX_PIN)
   {
     // If 0 -> 13, then its on the UNO, otherwise its on the MCP and needs to be written over I2C
     if (pinNumber >= (int) Pin::MCP23017_0)
@@ -270,7 +271,7 @@ class SwitchFourPin
 // int straightswitchpin, int switchturnpin, int buttonpin, int enablepin) 
 const int numSwitches = 2;
 
-SwitchFourPin switches[2] = {SwitchFourPin(Pin::UNO_4, Pin::UNO_5, Pin::MCP23017_0, Pin::MCP23017_1, "Switch 0"),
+SwitchFourPin switches[2] = {SwitchFourPin(Pin::UNO_14, Pin::UNO_15, Pin::MCP23017_0, Pin::MCP23017_1, "Switch 0"),
                             SwitchFourPin(Pin::UNO_2, Pin::UNO_3, Pin::MCP23017_2, Pin::MCP23017_3, "Switch 1"),
                             };
 
