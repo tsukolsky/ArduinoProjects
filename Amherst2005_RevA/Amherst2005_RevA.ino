@@ -49,6 +49,12 @@ enum Pin
 #define MIN_PIN (int) Pin::ARDUINO_2
 #define MAX_PIN (int) Pin::MCP23017_15
 
+enum LEDState
+{
+  LED_OFF = 0,
+  LED_ON = 1,
+};
+
 enum SwitchState
 {
   SW_STRAIGHT = 0,
@@ -384,7 +390,7 @@ class SwitchFourPin
 Adafruit_MCP23X17 mcp;
 Timer strobeTimer = Timer();
 BoardPins pins = BoardPins(&mcp);
-unsigned short turnBlinkLightOn;
+LEDState switchStrobe;
 unsigned long testTime;
 const int NUM_SWITCHES = 7;
 
@@ -404,9 +410,8 @@ Timer testTimer = Timer();
 void setup() {
   // Setup each switch
   Serial.begin(9600);
-
-  // Initialize the Power Controller - set power to 0. This variable is global and is used by the Button Controller class
-  turnBlinkLightOn = 0; // by default, turn them off on first check (it will toggle from this)
+  
+  switchStrobe = LEDState::LED_OFF; // by default, turn them off on first check (it will toggle from this)
   strobeTimer.Set((unsigned long) (1000/TURN_BLINK_HZ));
 
 #ifdef TEST_TURN_BLINK
@@ -434,15 +439,15 @@ void loop()
     //  Beacuse our switch implementation sets the TURN and STARIGHT pins with enable off, then brings enable high, we can mess with them as long as the switch is not in LOCKOUT
     if (strobeTimer.Ended())
     {
-      turnBlinkLightOn = !turnBlinkLightOn;
+      switchStrobe = (LEDState) !switchStrobe;
       for (int i = 0; i < NUM_SWITCHES; i++)
       {
         // IF not in lockout, write the straight pin value to be what all the others are
         if (!switches[i].Lockout() && switches[i].IsTurn())
         {
           DPRINTLN("Switch " + String(i) + " is not in lockout and is turn");
-          DPRINTLN("Writing " + String(turnBlinkLightOn) + " to straight pin");
-          switches[i].WriteStraightPin(turnBlinkLightOn);
+          DPRINTLN("Writing " + String(switchStrobe) + " to straight pin");
+          switches[i].WriteStraightPin(switchStrobe);
         }
       }
       strobeTimer.Reset();
