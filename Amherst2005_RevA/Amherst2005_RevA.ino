@@ -1,6 +1,6 @@
 #include <Adafruit_MCP23X17.h>
 
-//#define DEBUG 
+#define DEBUG 
 #define TEST_TURN_BLINK
 #define TURN_BLINK_HZ     5
 #define DELAY_MS          5
@@ -61,13 +61,6 @@ enum ButtonState
   BUTTON_OPEN = 1,
 };
 
-// Initialize adafruit mcp variable so pin modes know what to write to - these routines could be collapsed into the Switch class, but it's really a global
-// for the arduino in this implementation. it shouldn't be controlled by any one switch. Truthfully, it should be provided by the main class as a pointer
-// but whatever
-Adafruit_MCP23X17 mcp;
-
-
-
 /*******************************
 *
 * Pin Helper Classes (Arduino vs MCP23017)
@@ -79,25 +72,25 @@ class BoardPins
   public:
     BoardPins();
     BoardPins(Adafruit_MCP23X17* mcp);
-    bool BSetPinDirection(int pinNumber, int direction);
-    int BPinRead(int pinNumber);
-    bool BPinWrite(int pinNumber, int value);
+    bool SetPinDirection(int pinNumber, int direction);
+    int PinRead(int pinNumber);
+    bool PinWrite(int pinNumber, int value);
   private:
-    Adafruit_MCP23X17* mcp;
+    Adafruit_MCP23X17* _mcp;
 };
 
 BoardPins::BoardPins()
 {
-  mcp = 0;
+  _mcp = 0;
 }
 
 BoardPins::BoardPins(Adafruit_MCP23X17* mcp)
 {
-  this->mcp = mcp;
+  this->_mcp = mcp;
 }
 
 // Pin helper functions to deconflict UNO GPIO pins and MCP23017 GPIO pins (via I2C)
-bool SetPinDirection(int pinNumber, int direction)
+bool BoardPins::SetPinDirection(int pinNumber, int direction)
 {
   bool ret = false;
   if (pinNumber >= MIN_PIN && pinNumber <= MAX_PIN)
@@ -105,7 +98,7 @@ bool SetPinDirection(int pinNumber, int direction)
     if (pinNumber >= (int) Pin::MCP23017_0)
     {
       // This should be written over I2C bus to digital IO pin
-      mcp.pinMode(pinNumber, direction);
+      _mcp->pinMode(pinNumber, direction);
     }
     else
     {
@@ -117,7 +110,7 @@ bool SetPinDirection(int pinNumber, int direction)
   return ret;
 }
 
-int PinRead(int pinNumber)
+int BoardPins::PinRead(int pinNumber)
 {
   int ret = 0;  // default 0, this is not valid if there is a pull-up so that is the constraint on this class/implementation
   if (pinNumber >= MIN_PIN && pinNumber <= MAX_PIN)
@@ -126,7 +119,7 @@ int PinRead(int pinNumber)
     {
       // This should be read over I2C bus to digital IO pin
       pinNumber -= Pin::MCP23017_0;
-      ret = mcp.digitalRead(pinNumber);
+      ret = _mcp->digitalRead(pinNumber);
     }
     else
     {
@@ -137,7 +130,7 @@ int PinRead(int pinNumber)
   return ret;
 }
 
-bool PinWrite(int pinNumber, int value)
+bool BoardPins::PinWrite(int pinNumber, int value)
 {
   bool ret = false;
   // Must be valid pin
@@ -148,7 +141,7 @@ bool PinWrite(int pinNumber, int value)
     {
       pinNumber -= Pin::MCP23017_0;
       // This should be written over I2C bus to digital IO pin
-      mcp.digitalWrite(pinNumber, value);
+      _mcp->digitalWrite(pinNumber, value);
     }
     else
     {
@@ -256,10 +249,12 @@ class SwitchFourPin
     unsigned long _driveUntilTime;  // This will roll over when the millis() call also rolls over
     Timer _driveTimer;
     bool _lockout;
+    BoardPins* _pins;
 
   public:
-    SwitchFourPin(int straightswitchpin, int switchturnpin, int buttonpin, int enablepin, char* friendlyName) 
+    SwitchFourPin(BoardPins* pins, int straightswitchpin, int switchturnpin, int buttonpin, int enablepin, char* friendlyName) 
     {
+      this->_pins = pins;
       this->switchStraightPin = straightswitchpin; 
       this->switchTurnPin = switchturnpin;
       this->buttonpin = buttonpin;
@@ -268,10 +263,10 @@ class SwitchFourPin
       this->buttonstate = ButtonState::BUTTON_OPEN;
       this->_lockout = false;
       strncpy(this->_switchName, friendlyName, 10);
-      SetPinDirection(straightswitchpin, OUTPUT);
-      SetPinDirection(switchturnpin, OUTPUT);
-      SetPinDirection(buttonpin, INPUT_PULLUP);
-      SetPinDirection(enablepin, OUTPUT);
+      pins->SetPinDirection(straightswitchpin, OUTPUT);
+      pins->SetPinDirection(switchturnpin, OUTPUT);
+      pins->SetPinDirection(buttonpin, INPUT_PULLUP);
+      pins->SetPinDirection(enablepin, OUTPUT);
       
       // Initial everyting based off of initial state
       ChangeSwitchState();
@@ -298,7 +293,7 @@ class SwitchFourPin
     {
       if (!this->_lockout)
       {
-        PinWrite(this->switchStraightPin, value);
+        _pins->PinWrite(this->switchStraightPin, value);
       }
     }
 
@@ -309,10 +304,11 @@ class SwitchFourPin
       {
         // Not in a drive situation - make sure the enable pin is LOW, the input pins should be LEFT AS THEY ARE
         this->_lockout = false;
-        PinWrite(this->enablePin, LOW);
+        _pins->PinWrite(this->enablePin, LOW);
         
         // First, read in the current button value
-        int buttonVal = PinRead(buttonpin);
+        int buttonVal = _pins->PinRead(buttonpin);
+        this->PrintDebug("Button Val is " + String(buttonVal));
         switch (this->buttonstate)
         {
           case ButtonState::BUTTON_OPEN:
@@ -347,27 +343,27 @@ class SwitchFourPin
     void ChangeSwitchState()
     {
       // Switch the digital pins and then drive it
-      PinWrite(this->enablePin, LOW); // just to make sure
+      _pins->PinWrite(this->enablePin, LOW); // just to make sure
       if (this->switchstate == SwitchState::SW_STRAIGHT)
       {
         // It should now be a turn
         this->switchstate = SwitchState::SW_TURN;
-        PinWrite(this->switchStraightPin, LOW);
-        PinWrite(this->switchTurnPin, HIGH);
+        _pins->PinWrite(this->switchStraightPin, LOW);
+        _pins->PinWrite(this->switchTurnPin, HIGH);
       }
       else
       {
         this->switchstate = SwitchState::SW_STRAIGHT;
-        PinWrite(this->switchTurnPin, LOW);
-        PinWrite(this->switchStraightPin, HIGH);
+        _pins->PinWrite(this->switchTurnPin, LOW);
+        _pins->PinWrite(this->switchStraightPin, HIGH);
       }
 
       // Now drive it and set the next millis time that this drive action can be stopped
       this->_lockout = true;
-      PinWrite(this->enablePin, HIGH);
+      _pins->PinWrite(this->enablePin, HIGH);
       this->_driveTimer.Set(this->_minDriveTime);
       PrintDebug("Current time " + String(millis()));
-      PrintDebug("Drive Until Time " + String(this->_driveUntilTime));
+      PrintDebug("Drive Until Time " + String(this->_driveTimer.EndTime()));
     }
 };
 /*****************************************************************************************
@@ -382,33 +378,39 @@ class SwitchFourPin
 // The MCP23017 provides 16 IO pins. The Arduino has pins 0-13 easily accessible, then I2C on the top to address the remaining 16. Therefore, for 7 switches all
 // logic turn/straight pins will be on the arduino 0-13, with button input and enable pins on the MCP23017 breakout board
 // int straightswitchpin, int switchturnpin, int buttonpin, int enablepin) 
-const int NUM_SWITCHES = 7;
-
-SwitchFourPin switches[7] = {SwitchFourPin(Pin::ARDUINO_14, Pin::ARDUINO_15, Pin::MCP23017_0, Pin::MCP23017_1, "Switch 0"),
-                             SwitchFourPin(Pin::ARDUINO_2, Pin::ARDUINO_3, Pin::MCP23017_2, Pin::MCP23017_3, "Switch 1"),
-                             SwitchFourPin(Pin::ARDUINO_4, Pin::ARDUINO_5, Pin::MCP23017_4, Pin::MCP23017_5, "Switch 2"),
-                             SwitchFourPin(Pin::ARDUINO_6, Pin::ARDUINO_7, Pin::MCP23017_6, Pin::MCP23017_7, "Switch 3"),
-                             SwitchFourPin(Pin::ARDUINO_8, Pin::ARDUINO_9, Pin::MCP23017_8, Pin::MCP23017_9, "Switch 4"),
-                             SwitchFourPin(Pin::ARDUINO_10, Pin::ARDUINO_11, Pin::MCP23017_10, Pin::MCP23017_11, "Switch 5"),
-                             SwitchFourPin(Pin::ARDUINO_12, Pin::ARDUINO_13, Pin::MCP23017_12, Pin::MCP23017_13, "Switch 6"),
-                            };
-
-Timer strobeTimer = Timer(0);
+// Initialize adafruit mcp variable so pin modes know what to write to - these routines could be collapsed into the Switch class, but it's really a global
+// for the arduino in this implementation. it shouldn't be controlled by any one switch. Truthfully, it should be provided by the main class as a pointer
+// but whatever
+Adafruit_MCP23X17 mcp;
+Timer strobeTimer = Timer();
+BoardPins pins = BoardPins(&mcp);
 unsigned short turnBlinkLightOn;
 unsigned long testTime;
+const int NUM_SWITCHES = 7;
+
+SwitchFourPin switches[NUM_SWITCHES] = {SwitchFourPin(&pins, Pin::ARDUINO_14, Pin::ARDUINO_15, Pin::MCP23017_0, Pin::MCP23017_1, "Switch 0"),
+                            SwitchFourPin(&pins, Pin::ARDUINO_2, Pin::ARDUINO_3, Pin::MCP23017_2, Pin::MCP23017_3, "Switch 1"),
+                            SwitchFourPin(&pins, Pin::ARDUINO_4, Pin::ARDUINO_5, Pin::MCP23017_4, Pin::MCP23017_5, "Switch 2"),
+                            SwitchFourPin(&pins, Pin::ARDUINO_6, Pin::ARDUINO_7, Pin::MCP23017_6, Pin::MCP23017_7, "Switch 3"),
+                            SwitchFourPin(&pins, Pin::ARDUINO_8, Pin::ARDUINO_9, Pin::MCP23017_8, Pin::MCP23017_9, "Switch 4"),
+                            SwitchFourPin(&pins, Pin::ARDUINO_10, Pin::ARDUINO_11, Pin::MCP23017_10, Pin::MCP23017_11, "Switch 5"),
+                            SwitchFourPin(&pins, Pin::ARDUINO_12, Pin::ARDUINO_13, Pin::MCP23017_12, Pin::MCP23017_13, "Switch 6"),
+                            };
 
 #ifdef TEST_TURN_BLINK
-Timer testTimer = Timer(0);
+Timer testTimer = Timer();
 #endif
 
 void setup() {
   // Setup each switch
   Serial.begin(9600);
+
   // Initialize the Power Controller - set power to 0. This variable is global and is used by the Button Controller class
   turnBlinkLightOn = 0; // by default, turn them off on first check (it will toggle from this)
   strobeTimer.Set((unsigned long) (1000/TURN_BLINK_HZ));
+
 #ifdef TEST_TURN_BLINK
-  strobeTimer.Set(10*1000); // 10 seconds
+  testTimer.Set(10*1000); // 10 seconds
 #endif
 }
 
