@@ -1,6 +1,6 @@
 #include <Adafruit_MCP23X17.h>
 
-#define DEBUG 
+// #define DEBUG 
 #define TEST_TURN_BLINK
 #define TURN_BLINK_HZ     5
 #define DELAY_MS          5
@@ -104,6 +104,7 @@ bool BoardPins::SetPinDirection(int pinNumber, int direction)
     if (pinNumber >= (int) Pin::MCP23017_0)
     {
       // This should be written over I2C bus to digital IO pin
+      pinNumber -= Pin::MCP23017_0;
       _mcp->pinMode(pinNumber, direction);
     }
     else
@@ -247,6 +248,7 @@ class SwitchFourPin
     int switchTurnPin;
     int buttonpin;
     int enablePin;
+    bool _initialized;
     char _switchName[10];
     SwitchState switchstate;
     ButtonState buttonstate; 
@@ -261,6 +263,7 @@ class SwitchFourPin
     SwitchFourPin(BoardPins* pins, int straightswitchpin, int switchturnpin, int buttonpin, int enablepin, char* friendlyName) 
     {
       this->_pins = pins;
+      this->_initialized = false;
       this->switchStraightPin = straightswitchpin; 
       this->switchTurnPin = switchturnpin;
       this->buttonpin = buttonpin;
@@ -269,14 +272,19 @@ class SwitchFourPin
       this->buttonstate = ButtonState::BUTTON_OPEN;
       this->_lockout = false;
       strncpy(this->_switchName, friendlyName, 10);
-      pins->SetPinDirection(straightswitchpin, OUTPUT);
-      pins->SetPinDirection(switchturnpin, OUTPUT);
-      pins->SetPinDirection(buttonpin, INPUT_PULLUP);
-      pins->SetPinDirection(enablepin, OUTPUT);
+    }
+
+    void Initialize()
+    {
+      _pins->SetPinDirection(switchStraightPin, OUTPUT);
+      _pins->SetPinDirection(switchTurnPin, OUTPUT);
+      _pins->SetPinDirection(buttonpin, INPUT_PULLUP);
+      _pins->SetPinDirection(enablePin, OUTPUT);
       
       // Initial everyting based off of initial state
       ChangeSwitchState();
       Serial.println(String(this->_switchName) + ": Initialized");
+      _initialized = true;
     }
 
     void PrintDebug(const String &s)
@@ -348,6 +356,12 @@ class SwitchFourPin
 
     void ChangeSwitchState()
     {
+      if (!_initialized)
+      {
+        PrintDebug("Not initialized");
+        return;
+      }
+
       // Switch the digital pins and then drive it
       _pins->PinWrite(this->enablePin, LOW); // just to make sure
       if (this->switchstate == SwitchState::SW_STRAIGHT)
@@ -407,10 +421,20 @@ SwitchFourPin switches[NUM_SWITCHES] = {SwitchFourPin(&pins, Pin::ARDUINO_14, Pi
 Timer testTimer = Timer();
 #endif
 
+
 void setup() {
   // Setup each switch
   Serial.begin(9600);
-  
+  if (!mcp.begin_I2C()) 
+  {
+    Serial.println("Error.");
+    while(1);
+  } 
+  for (int i = 0; i < NUM_SWITCHES; i++)
+  {
+    switches[i].Initialize();
+  }
+
   switchStrobe = LEDState::LED_OFF; // by default, turn them off on first check (it will toggle from this)
   strobeTimer.Set((unsigned long) (1000/TURN_BLINK_HZ));
 
