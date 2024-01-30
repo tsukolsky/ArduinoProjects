@@ -27,9 +27,9 @@ void SwitchTwoPin::Initialize()
   _pins->SetPinDirection(_enablePin, OUTPUT);
   
   // Initial everyting based off of initial state
+  _initialized = true;	
   ChangeSwitchState();
   Serial.println(String(this->_switchName) + ": Initialized");
-  _initialized = true;
 }
 
 void SwitchTwoPin::PrintDebug(const String &s)
@@ -53,7 +53,7 @@ bool SwitchTwoPin::Lockout()
 void SwitchTwoPin::Monitor()
 {
   //Serial.println(String(this->_switchName) + ": Current state " + String(this->switchstate));
-  if (this->_driveTimer.Ended())
+  if (this->_driveTimer.Ended() && _initialized)
   {
     // Not in a drive situation - make sure the enable pin is LOW, the input pins should be LEFT AS THEY ARE
     this->_lockout = false;

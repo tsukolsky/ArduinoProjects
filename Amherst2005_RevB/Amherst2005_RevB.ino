@@ -4,7 +4,7 @@
 #include <KatoSwitches.h>
 
 // #define DEBUG 
-#define DELAY_MS          5
+#define DELAY_MS          100
 
 
 /*****************************************************************************************
@@ -16,8 +16,8 @@
 /
 *****************************************************************************************/
 
-// The MCP23017 provides 16 IO pins. The Arduino has pins 0-13 easily accessible, then I2C on the top to address the remaining 16. Therefore, for 7 switches all
-// logic turn/straight pins will be on the arduino 0-13, with button input and enable pins on the MCP23017 breakout board
+// The MCP23017 provides 16 IO pins. The Arduino has pins 2-17 [only using up to 15] easily accessible, then I2C on the top to address additional pins
+// Switch reading pins on the MCP23017 breakout board
 // Initialize adafruit mcp variable so pin modes know what to write to - these routines could be collapsed into the Switch class, but it's really a global
 // for the arduino in this implementation. it shouldn't be controlled by any one switch. Truthfully, it should be provided by the main class as a pointer
 // but whatever
@@ -45,19 +45,31 @@ void setup() {
     Serial.println("Error.");
     while(1);
   } 
+
+#ifndef DEBUG
   for (int i = 0; i < NUM_SWITCHES; i++)
   {
-    switches[i].Initialize();
+    switches[i].Initialize(); // Input pins will be pullup enabled, so they will read high by default. 
   }
+#else
+  pins.SetPinDirection(Pin::MCP23017_13, INPUT_PULLUP);
+  pins.SetPinDirection(Pin::MCP23017_4, OUTPUT);
+  pins.PinWrite(Pin::MCP23017_4, HIGH);
+#endif
 }
 
 void loop() 
 {
+#ifdef DEBUG
+  static int readVal = 0;
+  readVal = pins.PinRead(Pin::MCP23017_13);
+  pins.PinWrite(Pin::MCP23017_4, readVal);
+#else
   // Check to see if a button is currently depressed on any of the switches/buttons - if so, change the switch
   for (int i = 0; i < NUM_SWITCHES; i++)
   {
     switches[i].Monitor();
   }
-
+#endif
   delay(DELAY_MS);
 }

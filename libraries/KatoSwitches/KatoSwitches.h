@@ -33,7 +33,7 @@ class SwitchTwoPin
     char _switchName[10];
     SwitchState _switchState; 
     char debugstr[10];
-    const int _minDriveTime = 25; // We have to drive the pin for more than this time to get it to actually switch
+    const int _minDriveTime = 50; // We have to drive the pin for more than this time to get it to actually switch
     unsigned long _driveUntilTime;  // This will roll over when the millis() call also rolls over
     Timer _driveTimer;
     bool _lockout;
